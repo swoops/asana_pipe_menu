@@ -2,19 +2,13 @@
 import requests
 import optparse
 import sys
+import json
 from lxml import etree
+import os.path
 
+# change this if you want the config file somewhere else
+CONF_FILE = "{}/.config/asana_config".format(os.path.expanduser('~'))
 
-
-#################################################################
-#################   FILL THIS OUT!!!         ####################
-#################################################################
-workspaces =  [{'id': 000000000000, 'name': 'Personal Projects'}]
-access_token = "0000000000000000000000000000000000"
-#################################################################
-
-auth = { "Authorization" : "Bearer {}".format(access_token) }
-url_base = "https://app.asana.com/"
 def get_task_menu(task):
     task_menu = etree.Element(
         "menu", 
@@ -33,8 +27,6 @@ def get_task_menu(task):
             label="{}".format(k)
     ))
     task_menu.append(make_completion_marker(task))
-
-
     return task_menu
 
 def make_completion_marker(task):
@@ -119,11 +111,6 @@ def get_tasks(pro_id, completed=False):
     else:
         return None
 
-def get_me():
-    res = requests.get("{}api/1.0/users/me".format(url_base), headers=auth)
-    print res.json()
-    exit(0)
-
 def mark_completed(task_id):
     res = requests.put("{}api/1.0/tasks/{}".format(url_base, task_id), headers=auth, data={ "completed" : "True" })
     # print res.json()
@@ -139,87 +126,117 @@ def get_asigned_tasks(workspace, who="me", archived=False, completed=False ):
         "workspace" : workspace
         }
     res = requests.get("{}api/1.0/tasks/".format(url_base), headers=auth, params=params)
-    # print res.json()
     if res.status_code == 200:
         return res.json()["data"]
     else:
         return None
 
+def make_config():
+    print "config file will be located at: {}".format(CONF_FILE)
+    access_token = raw_input("What is your api key\n")
+    assert type(access_token) is str
+    auth = { "Authorization" : "Bearer {}".format(access_token) }
+    res = requests.get("{}api/1.0/users/me".format(url_base), headers=auth)
+    if res.status_code != 200: 
+        print "key not accepted"
+        exit(3)
+    cache_file = raw_input("where should I write the cache?\n")
+    assert type(cache_file) is str
+    data = { 
+        "access_token" : access_token,
+        "workspaces"   : res.json()["data"]["workspaces"],
+        "cache_file"   : cache_file
+    }
+
+    with open(CONF_FILE, "w") as fp:
+        fp.write(json.dumps(data))
+    exit(0)
+
+def get_update_element():
+    execute = etree.Element("execute")
+    execute.text="{} -u".format(sys.argv[0])
+    action = etree.Element(
+        "action", 
+        name="Execute",
+    )
+    action.append(execute)
+
+    exe_item = etree.Element(
+        "item", 
+        label ="Update Cache",
+    )
+    exe_item.append(action)
+    return exe_item
     
-    
-    
+def make_menu():
+    if workspaces == None: exit(3)
+
+    root = etree.Element("openbox_pipe_menu")
+    root.append(get_update_element())
+    for work in workspaces:
+        # name workspace
+        root.append(etree.Element(
+            "separator", 
+            label="{}".format(work["name"])
+        ))
+        tasks = get_asigned_tasks(work["id"])
+        assert tasks != None
+
+        tasks.sort(key=lambda x: (x["due_on"] is None, x['due_on']), reverse=False)
+        for task in tasks:
+            if task["completed"]: continue
+
+            # remove tasks that are seperators...
+            try: 
+                if task["name"][-1] == ":": continue
+            except IndexError: 
+                continue
+
+            proj_menu = get_proj_menu(task, root)
+            task_menu = get_task_menu(task)
+            sep_menu = get_sep_menu(task, proj_menu)
+
+            # if it has a seperator make a sub menu
+            if sep_menu is None:
+                proj_menu.append( task_menu )
+            else:
+                sep_menu.append( task_menu )
+
+
+    with open(cache_file, "w") as fp:
+        et = etree.ElementTree(root)
+        et.write(fp, pretty_print=True)
+
 
 def main():
     parser = optparse.OptionParser('usage %prog [-p | -t <plugin_id>]')
-    parser.add_option('-p', action="store_true", dest="plugins", default=False, help='list plugins\n')
-    parser.add_option('-m', action="store_true", dest="me", default=False, help='list info on you\n')
-    parser.add_option('-t', dest="tasks", type='int', default=None, help='List tasks for this pluginid\n')
     parser.add_option('-c', dest="mark", type='int', default=None, help='Mark this task completed\n')
+    parser.add_option('-u', action="store_true", dest="update", default=False, help='update the cache file\n')
     (options, args) = parser.parse_args()
-    if options.me: get_me()
-    elif options.mark != None: mark_completed(options.mark)
-    elif options.plugins:
-        projects = get_projects()
-        if projects == None:
-            exit(2)
-        root = etree.Element("openbox_pipe_menu")
-        for i in projects:
-            root.append(etree.Element(
-                "menu", 
-                execute="{} -t {}".format(sys.argv[0], i["id"]),
-                label="{}".format(i["name"]),
-                id="{}".format(i["name"])
-            ))
-        sys.stdout.write(etree.tostring(root, pretty_print=True))
-    elif options.tasks != None:
-        tasks = get_tasks(options.tasks)
-        if tasks == None:
-            exit(3)
-        root = etree.Element("openbox_pipe_menu")
-        for i in tasks:
-            if not i["completed"]:
-                root.append(etree.Element(
-                    "item", 
-                    label="{}".format(i["name"])
-                ))
-        print etree.tostring(root, pretty_print=True)
-    else:   
-        if workspaces == None: exit(3)
-
-        root = etree.Element("openbox_pipe_menu")
-        for work in workspaces:
-            # name workspace
-            root.append(etree.Element(
-                "separator", 
-                label="{}".format(work["name"])
-            ))
-            tasks = get_asigned_tasks(work["id"])
-            assert tasks != None
-
-            tasks.sort(key=lambda x: (x["due_on"] is None, x['due_on']), reverse=False)
-            for task in tasks:
-                if task["completed"]: continue
-
-                # remove tasks that are seperators...
-                try: 
-                    if task["name"][-1] == ":": continue
-                except IndexError: 
-                    continue
-
-                proj_menu = get_proj_menu(task, root)
-                task_menu = get_task_menu(task)
-                sep_menu = get_sep_menu(task, proj_menu)
-
-                # if it has a seperator make a sub menu
-                if sep_menu is None:
-                    proj_menu.append( task_menu )
-                else:
-                    sep_menu.append( task_menu )
-
-        print etree.tostring(root, pretty_print=True)
+    if options.mark != None: 
+        mark_completed(options.mark)
+        make_menu()
+    if options.update: make_menu()
+    else: 
+        if not os.path.isfile(cache_file): make_menu()
+        with open(cache_file, "r") as fp: print fp.read()
         
 
 if __name__ == '__main__':
+    url_base = "https://app.asana.com/"
+    try:
+        json_data=open(CONF_FILE).read()
+        data = json.loads(json_data)
+        workspaces = data["workspaces"]
+        access_token = data["access_token"]
+        cache_file = data["cache_file"]
+    except:
+        ans = raw_input("Could not get your config file, should I make it for you? (y/n)\n")
+        assert type(ans) is str
+        if ans == "y" : make_config()
+        else: exit(4)
+
+    auth = { "Authorization" : "Bearer {}".format(access_token) }
     main()
 
 
