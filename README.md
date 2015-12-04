@@ -1,4 +1,4 @@
-![Menu Image]https://github.com/swoops/asana_pipe_menu/blob/master/asana_pipe.png
+![Menu Image](./asana_pipe.png "Menu Image")
 
 # asana_pipe_menu
 Makes an openbox pipemenu for asana tasks.
