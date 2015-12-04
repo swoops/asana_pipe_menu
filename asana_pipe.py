@@ -27,6 +27,8 @@ def get_task_menu(task):
             label="{}".format(k)
     ))
     task_menu.append(make_completion_marker(task))
+
+
     return task_menu
 
 def make_completion_marker(task):
@@ -113,7 +115,7 @@ def get_tasks(pro_id, completed=False):
 
 def mark_completed(task_id):
     res = requests.put("{}api/1.0/tasks/{}".format(url_base, task_id), headers=auth, data={ "completed" : "True" })
-    # print res.json()
+    print res.json()
     exit(0)
     
 
@@ -126,6 +128,7 @@ def get_asigned_tasks(workspace, who="me", archived=False, completed=False ):
         "workspace" : workspace
         }
     res = requests.get("{}api/1.0/tasks/".format(url_base), headers=auth, params=params)
+    # print res.json()
     if res.status_code == 200:
         return res.json()["data"]
     else:
@@ -169,6 +172,9 @@ def get_update_element():
     return exe_item
     
 def make_menu():
+    # remove the cache file if it exits so people don't go
+    # thinking things were updated already when we are still
+    # waiting on the server
     if workspaces == None: exit(3)
 
     root = etree.Element("openbox_pipe_menu")
@@ -206,7 +212,7 @@ def make_menu():
     with open(cache_file, "w") as fp:
         et = etree.ElementTree(root)
         et.write(fp, pretty_print=True)
-
+    # print etree.tostring(root, pretty_print=True)
 
 def main():
     parser = optparse.OptionParser('usage %prog [-p | -t <plugin_id>]')
@@ -214,12 +220,25 @@ def main():
     parser.add_option('-u', action="store_true", dest="update", default=False, help='update the cache file\n')
     (options, args) = parser.parse_args()
     if options.mark != None: 
+        # first remove old file since that is faster then api request
+        # and you don't want to get confused
+        if os.path.isfile(cache_file): os.remove(cache_file)
         mark_completed(options.mark)
         make_menu()
-    if options.update: make_menu()
+    if options.update: 
+        # first remove old file since that is faster then api request
+        # and you don't want to get confused
+        if os.path.isfile(cache_file): os.remove(cache_file)
+        make_menu()
     else: 
-        if not os.path.isfile(cache_file): make_menu()
-        with open(cache_file, "r") as fp: print fp.read()
+        if not os.path.isfile(cache_file): 
+            # file does not exist
+            # could be it was not created yet, or it is being populated now
+            root = etree.Element("openbox_pipe_menu")
+            root.append(get_update_element())
+            print(etree.tostring(root, pretty_print=True))
+        else:
+            with open(cache_file, "r") as fp: print fp.read()
         
 
 if __name__ == '__main__':

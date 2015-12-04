@@ -1,3 +1,5 @@
+![Menu Image]https://github.com/swoops/asana_pipe_menu/blob/master/asana_pipe.png
+
 # asana_pipe_menu
 Makes an openbox pipemenu for asana tasks.
 
@@ -5,11 +7,15 @@ This is not complete by any means but does what I want it to do (mostly)
 so I  am happy with it.
 
 # Make it work
-Download the .py file then change the first two variables to fit your asana needs.
+Download the .py file and put it where you like it.  Running the program
+the first time should prompt you to make your config file.  Just answer
+the questions.  Then add the path to the script inside your openbox menu.xml
+file, something like: 
 
-Running asana_pipe.py -m may help with the "workspaces" variable.
+`<menu execute="~/.config/path_stuff/asana_pipe.py" id="List Asana Projects" label="Asana"/>`
 
-# Warning
+# Security Warning
 Your access_tokens are as good as credentials.  These are stored in plain text
-inside of this file.  Anyone with access to your computer can steal them.  I may
-add a keyring or something tricky in the future but for now this is how it is.
+inside of a config file.  Anyone with access to your computer can steal them.  
+Additionally it makes a cache file of the tasks you have inside the /tmp
+directory.
